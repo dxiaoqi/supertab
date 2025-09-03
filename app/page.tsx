@@ -1,95 +1,180 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
+
+import { useState, useEffect, useMemo, useRef } from "react";
+import { localPredict } from "@/lib/cybertext";
+import { getPreferenceSuggestion, recordAccept, recordReject } from "@/lib/user-prefs";
+import { useChat } from "@ai-sdk/react";
 
 export default function Home() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const { messages, status, sendMessage } = useChat();
+  const [input, setInput] = useState("");
+  const [ghost, setGhost] = useState("");
+  const [chipVisible, setChipVisible] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<Map<string, string>>(new Map());
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+  return (
+    <main style={{ maxWidth: 680, margin: "0 auto", padding: 24 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>Tab Cybertext</h1>
+      <p style={{ color: "#666", marginBottom: 16 }}>尝试与AI对话，并通过tab键接收AI的信号</p>
+
+      <div style={{ position: "relative", marginBottom: 12, width: 680 }}>
+        <textarea
+          ref={textAreaRef}
+          value={input}
+          placeholder="开始输入...（按 Tab 确认建议）"
+          onChange={(e) => setInput(e.target.value)}
+          onScroll={(e) => {
+            if (ghostRef.current) {
+              ghostRef.current.scrollTop = e.currentTarget.scrollTop;
+              ghostRef.current.scrollLeft = e.currentTarget.scrollLeft;
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Tab" && ghost) {
+              e.preventDefault();
+              setInput((prev) => {
+                recordAccept(prev, ghost);
+                return prev + ghost;
+              });
+              setGhost("");
+              setChipVisible(false);
+            }
+          }}
+          disabled={status !== "ready"}
+          style={{
+            width: 680,
+            height: 180,
+            padding: "12px 14px",
+            borderRadius: 10,
+            border: "none",
+            outline: "none",
+            resize: "none",
+            overflow: "auto",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+            fontSize: 14,
+            background: "#fff",
+          }}
+        />
+        <div
+          ref={ghostRef}
+          aria-hidden
+          style={{
+            pointerEvents: "none",
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 680,
+            height: 180,
+            padding: "12px 14px",
+            color: "#9aa0a6",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+            fontSize: 14,
+            whiteSpace: "pre-wrap",
+            overflow: "hidden",
+            opacity: 0.8,
+          }}
+        >
+          <span style={{ visibility: "hidden" }}>{input}</span>
+          <span>
+            {ghost}
+            {ghost && chipVisible ? " " : ""}
+            {ghost && chipVisible ? <span className="tab-chip">TAB</span> : null}
+          </span>
         </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      </div>
+
+      <div style={{ marginTop: 24, borderTop: "1px solid #eee", paddingTop: 12 }}>
+        {(messages as any[]).map((m: any) => (
+          <div key={m.id} style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>
+            <strong>{m.role === "user" ? "You" : "AI"}: </strong>
+            {m.parts?.map((part: any, idx: number) => (
+              <span key={idx}>{part.type === "text" ? part.text : ""}</span>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <Predictor input={input} setGhost={setGhost} setChipVisible={setChipVisible} />
+    </main>
   );
+}
+
+function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhost: (s: string) => void; setChipVisible: (v: boolean) => void }) {
+  const abortRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef<Map<string, string>>(new Map());
+  const [lastReqAt, setLastReqAt] = useState<number>(0);
+
+  const request = async (query: string) => {
+    const cached = cacheRef.current.get(query);
+    if (cached !== undefined) {
+      setGhost(cached);
+      setChipVisible(!!cached); // AI (cached) suggestion -> show TAB chip
+      return;
+    }
+
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const res = await fetch("/api/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: query }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error("bad response");
+      const data = (await res.json()) as { suggestion?: string };
+      const suggestion = (data.suggestion || "").trim();
+      cacheRef.current.set(query, suggestion);
+      setGhost(suggestion);
+      setChipVisible(!!suggestion); // AI suggestion -> show TAB chip
+    } catch (err) {
+      if ((err as any)?.name === "AbortError") return;
+    }
+  };
+
+  useEffect(() => {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      setGhost("");
+      setChipVisible(false);
+      return;
+    }
+
+    const local = localPredict(input);
+    let chosen = local.suggestion || "";
+    let confidence = local.confidence || 0;
+
+    const pref = getPreferenceSuggestion(input);
+    if (pref && pref.suggestion && pref.score > confidence) {
+      chosen = pref.suggestion;
+      confidence = pref.score;
+    }
+
+    setGhost(chosen);
+    setChipVisible(false); // local/pref suggestion -> no TAB chip
+
+    const highConfidence = confidence >= 0.88;
+    if (highConfidence) return;
+
+    const now = Date.now();
+    const since = now - lastReqAt;
+    const debounceMs = 200;
+    const throttleMs = 300;
+
+    let timeout: any;
+    const delay = Math.max(debounceMs, throttleMs - Math.max(0, since));
+    timeout = setTimeout(async () => {
+      setLastReqAt(Date.now());
+      await request(input);
+    }, delay);
+
+    return () => clearTimeout(timeout);
+  }, [input]);
+
+  return null;
 }

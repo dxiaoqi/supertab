@@ -24,6 +24,28 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.tab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #d1d5db;
+  opacity: 0.95;
+  animation: wiggle 1.6s ease-in-out infinite;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  50% { transform: translateX(2px); }
+  75% { transform: translateX(-1px); }
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
