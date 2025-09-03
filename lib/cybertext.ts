@@ -36,8 +36,8 @@ function computeClosers(text: string): string {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     const isEscaped = i > 0 && text[i - 1] === "\\";
-    const openIdx = PAREN_OPEN.indexOf(ch as any);
-    const closeIdx = PAREN_CLOSE.indexOf(ch as any);
+    const openIdx = PAREN_OPEN.indexOf(ch as (typeof PAREN_OPEN)[number]);
+    const closeIdx = PAREN_CLOSE.indexOf(ch as (typeof PAREN_CLOSE)[number]);
 
     if (openIdx >= 0) {
       stack.push(PAREN_CLOSE[openIdx]);

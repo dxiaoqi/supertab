@@ -41,7 +41,7 @@ Continue the text with a plausible short next fragment. Keep it concise (<= 12 w
       JSON.stringify({ suggestion }),
       { headers: { "Content-Type": "application/json" } }
     );
-  } catch (err) {
+  } catch {
     return new Response(
       JSON.stringify({ suggestion: "" }),
       { headers: { "Content-Type": "application/json" }, status: 200 }

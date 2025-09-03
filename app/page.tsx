@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { localPredict } from "@/lib/cybertext";
-import { getPreferenceSuggestion, recordAccept, recordReject } from "@/lib/user-prefs";
+import { getPreferenceSuggestion, recordAccept } from "@/lib/user-prefs";
 import { useChat } from "@ai-sdk/react";
 
+type UIPart = { type: "text"; text: string };
+type UIMessage = { id: string; role: "user" | "assistant"; parts?: UIPart[] };
 export default function Home() {
-  const { messages, status, sendMessage } = useChat();
+  const { messages, status } = useChat();
   const [input, setInput] = useState("");
   const [ghost, setGhost] = useState("");
   const [chipVisible, setChipVisible] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const cacheRef = useRef<Map<string, string>>(new Map());
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
 
@@ -87,10 +87,10 @@ export default function Home() {
       </div>
 
       <div style={{ marginTop: 24, borderTop: "1px solid #eee", paddingTop: 12 }}>
-        {(messages as any[]).map((m: any) => (
+        {(messages as UIMessage[]).map((m) => (
           <div key={m.id} style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>
             <strong>{m.role === "user" ? "You" : "AI"}: </strong>
-            {m.parts?.map((part: any, idx: number) => (
+            {m.parts?.map((part, idx) => (
               <span key={idx}>{part.type === "text" ? part.text : ""}</span>
             ))}
           </div>
@@ -107,11 +107,11 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
   const cacheRef = useRef<Map<string, string>>(new Map());
   const [lastReqAt, setLastReqAt] = useState<number>(0);
 
-  const request = async (query: string) => {
+  const request = useCallback(async (query: string) => {
     const cached = cacheRef.current.get(query);
     if (cached !== undefined) {
       setGhost(cached);
-      setChipVisible(!!cached); // AI (cached) suggestion -> show TAB chip
+      setChipVisible(!!cached);
       return;
     }
 
@@ -131,11 +131,11 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
       const suggestion = (data.suggestion || "").trim();
       cacheRef.current.set(query, suggestion);
       setGhost(suggestion);
-      setChipVisible(!!suggestion); // AI suggestion -> show TAB chip
-    } catch (err) {
-      if ((err as any)?.name === "AbortError") return;
+      setChipVisible(!!suggestion);
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
     }
-  };
+  }, [setGhost, setChipVisible]);
 
   useEffect(() => {
     const trimmed = input.trim();
@@ -156,7 +156,7 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
     }
 
     setGhost(chosen);
-    setChipVisible(false); // local/pref suggestion -> no TAB chip
+    setChipVisible(false);
 
     const highConfidence = confidence >= 0.88;
     if (highConfidence) return;
@@ -166,15 +166,14 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
     const debounceMs = 200;
     const throttleMs = 300;
 
-    let timeout: any;
     const delay = Math.max(debounceMs, throttleMs - Math.max(0, since));
-    timeout = setTimeout(async () => {
+    const timeout: ReturnType<typeof setTimeout> = setTimeout(async () => {
       setLastReqAt(Date.now());
       await request(input);
     }, delay);
 
     return () => clearTimeout(timeout);
-  }, [input]);
+  }, [input, lastReqAt, request, setGhost, setChipVisible]);
 
   return null;
 }
