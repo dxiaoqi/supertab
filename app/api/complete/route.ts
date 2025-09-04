@@ -3,6 +3,16 @@ import { createOpenAI } from "@ai-sdk/openai";
 
 export const runtime = "edge";
 
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return new Response(null, { headers: corsHeaders });
+}
+
 export async function POST(req: Request) {
   try {
     const { input, apiKey, baseUrl } = await req.json();
@@ -11,7 +21,7 @@ export async function POST(req: Request) {
     const resolvedBaseUrl = ((baseUrl as string) || process.env.OPENAI_BASE_URL) || undefined;
 
     if (!resolvedApiKey) {
-      return new Response("Missing OPENAI_API_KEY", { status: 500 });
+      return new Response("Missing OPENAI_API_KEY", { status: 500, headers: corsHeaders });
     }
 
     if (!input || typeof input !== "string") {
@@ -37,15 +47,14 @@ Continue the text with a plausible short next fragment. Keep it concise (<= 12 w
     const raw = (text || "").trim();
     const cleaned = sanitizeSuggestion(raw);
     const suggestion = removeOverlap(input, cleaned);
-    return new Response(
-      JSON.stringify({ suggestion }),
-      { headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ suggestion }), {
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
   } catch {
-    return new Response(
-      JSON.stringify({ suggestion: "" }),
-      { headers: { "Content-Type": "application/json" }, status: 200 }
-    );
+    return new Response(JSON.stringify({ suggestion: "" }), {
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+      status: 200,
+    });
   }
 }
 

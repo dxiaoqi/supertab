@@ -4,6 +4,16 @@ import { createOpenAI } from "@ai-sdk/openai";
 
 export const runtime = "edge";
 
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return new Response(null, { headers: corsHeaders });
+}
+
 export async function POST(req: Request) {
   const body = (await req.json()) as Partial<{
     messages: Array<Omit<UIMessage, 'id'>>;
@@ -16,7 +26,7 @@ export async function POST(req: Request) {
   const resolvedBaseUrl = ((baseUrl as string) || process.env.OPENAI_BASE_URL) || undefined;
 
   if (!resolvedApiKey) {
-    return new Response("Missing OPENAI_API_KEY", { status: 500 });
+    return new Response("Missing OPENAI_API_KEY", { status: 500, headers: corsHeaders });
   }
 
   const openai = createOpenAI({ apiKey: resolvedApiKey, baseURL: resolvedBaseUrl });
@@ -29,7 +39,13 @@ export async function POST(req: Request) {
     messages: modelMessages,
   });
 
-  return result.toUIMessageStreamResponse();
+  const res = result.toUIMessageStreamResponse();
+  // toUIMessageStreamResponse returns a Response; clone with CORS headers
+  const headers = new Headers(res.headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  return new Response(res.body, { status: res.status, headers });
 }
 
 
