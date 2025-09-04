@@ -104,7 +104,6 @@ export default function Home() {
 
 function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhost: (s: string) => void; setChipVisible: (v: boolean) => void }) {
   const cacheRef = useRef<Map<string, string>>(new Map());
-  const [lastReqAt, setLastReqAt] = useState<number>(0);
   const latestInputRef = useRef<string>("");
   const retryRef = useRef<Map<string, number>>(new Map());
 
@@ -167,23 +166,19 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
     const highConfidence = confidence >= 0.88;
     if (highConfidence) return;
 
-    const now = Date.now();
-    const since = now - lastReqAt;
-    const debounceMs = 300;
-    const throttleMs = 500;
+    // Pure pause-based debounce: only fire after no typing for pauseMs
+    const pauseMs = 200;
 
     // stop retrying this exact input after 2 failures
     const retries = retryRef.current.get(input) ?? 0;
     if (retries >= 2) return;
 
-    const delay = Math.max(debounceMs, throttleMs - Math.max(0, since));
     const timeout: ReturnType<typeof setTimeout> = setTimeout(async () => {
-      setLastReqAt(Date.now());
       await request(input);
-    }, delay);
+    }, pauseMs);
 
     return () => clearTimeout(timeout);
-  }, [input, lastReqAt, request, setGhost, setChipVisible]);
+  }, [input, request, setGhost, setChipVisible]);
 
   return null;
 }
