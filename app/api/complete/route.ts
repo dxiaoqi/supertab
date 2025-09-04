@@ -14,6 +14,7 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+  const start = Date.now();
   try {
     const { input, apiKey, baseUrl } = await req.json();
 
@@ -21,7 +22,11 @@ export async function POST(req: Request) {
     const resolvedBaseUrl = ((baseUrl as string) || process.env.OPENAI_BASE_URL) || undefined;
 
     if (!resolvedApiKey) {
-      return new Response("Missing OPENAI_API_KEY", { status: 500, headers: corsHeaders });
+      console.error("/api/complete error: missing OPENAI_API_KEY");
+      return new Response(JSON.stringify({ error: "Missing OPENAI_API_KEY" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
     }
 
     if (!input || typeof input !== "string") {
@@ -47,13 +52,29 @@ Continue the text with a plausible short next fragment. Keep it concise (<= 12 w
     const raw = (text || "").trim();
     const cleaned = sanitizeSuggestion(raw);
     const suggestion = removeOverlap(input, cleaned);
+    const elapsed = String(Date.now() - start);
     return new Response(JSON.stringify({ suggestion }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        "x-edge-ok": "1",
+        "x-elapsed-ms": elapsed,
+        ...corsHeaders,
+      },
     });
-  } catch {
-    return new Response(JSON.stringify({ suggestion: "" }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-      status: 200,
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "unknown error";
+    console.error("/api/complete error:", msg);
+    const elapsed = String(Date.now() - start);
+    return new Response(JSON.stringify({ error: msg, suggestion: "" }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        "x-edge-ok": "0",
+        "x-elapsed-ms": elapsed,
+        ...corsHeaders,
+      },
+      status: 502,
     });
   }
 }
