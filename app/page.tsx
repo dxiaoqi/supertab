@@ -103,9 +103,9 @@ export default function Home() {
 }
 
 function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhost: (s: string) => void; setChipVisible: (v: boolean) => void }) {
-  const abortRef = useRef<AbortController | null>(null);
   const cacheRef = useRef<Map<string, string>>(new Map());
   const [lastReqAt, setLastReqAt] = useState<number>(0);
+  const latestInputRef = useRef<string>("");
 
   const request = useCallback(async (query: string) => {
     const cached = cacheRef.current.get(query);
@@ -115,29 +115,28 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
       return;
     }
 
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     try {
       const res = await fetch("/api/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: query }),
-        signal: controller.signal,
       });
       if (!res.ok) throw new Error("bad response");
       const data = (await res.json()) as { suggestion?: string };
       const suggestion = (data.suggestion || "").trim();
       cacheRef.current.set(query, suggestion);
-      setGhost(suggestion);
-      setChipVisible(!!suggestion);
+      // stale guard: only apply if input unchanged
+      if (latestInputRef.current === query) {
+        setGhost(suggestion);
+        setChipVisible(!!suggestion);
+      }
     } catch (e) {
-      if (e instanceof Error && e.name === "AbortError") return;
+      // swallow
     }
   }, [setGhost, setChipVisible]);
 
   useEffect(() => {
+    latestInputRef.current = input;
     const trimmed = input.trim();
     if (!trimmed) {
       setGhost("");
@@ -163,8 +162,8 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
 
     const now = Date.now();
     const since = now - lastReqAt;
-    const debounceMs = 200;
-    const throttleMs = 300;
+    const debounceMs = 300;
+    const throttleMs = 500;
 
     const delay = Math.max(debounceMs, throttleMs - Math.max(0, since));
     const timeout: ReturnType<typeof setTimeout> = setTimeout(async () => {
