@@ -106,6 +106,7 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
   const cacheRef = useRef<Map<string, string>>(new Map());
   const [lastReqAt, setLastReqAt] = useState<number>(0);
   const latestInputRef = useRef<string>("");
+  const retryRef = useRef<Map<string, number>>(new Map());
 
   const request = useCallback(async (query: string) => {
     const cached = cacheRef.current.get(query);
@@ -121,17 +122,23 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: query }),
       });
-      if (!res.ok) throw new Error("bad response");
+      if (!res.ok) {
+        const prev = retryRef.current.get(query) ?? 0;
+        retryRef.current.set(query, prev + 1);
+        throw new Error("bad response");
+      }
       const data = (await res.json()) as { suggestion?: string };
       const suggestion = (data.suggestion || "").trim();
       cacheRef.current.set(query, suggestion);
+      // reset retries on success
+      retryRef.current.delete(query);
       // stale guard: only apply if input unchanged
       if (latestInputRef.current === query) {
         setGhost(suggestion);
         setChipVisible(!!suggestion);
       }
     } catch (e) {
-      // swallow
+      // swallow; retry counter already updated on non-ok
     }
   }, [setGhost, setChipVisible]);
 
@@ -164,6 +171,10 @@ function Predictor({ input, setGhost, setChipVisible }: { input: string; setGhos
     const since = now - lastReqAt;
     const debounceMs = 300;
     const throttleMs = 500;
+
+    // stop retrying this exact input after 2 failures
+    const retries = retryRef.current.get(input) ?? 0;
+    if (retries >= 2) return;
 
     const delay = Math.max(debounceMs, throttleMs - Math.max(0, since));
     const timeout: ReturnType<typeof setTimeout> = setTimeout(async () => {
